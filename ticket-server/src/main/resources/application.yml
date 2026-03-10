@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: ticket-reservation
+    version: 1.0
+  profiles:
+    active: local # [ local, dev, prod]
+  # 베너 색상 추가
+  output:
+    ansi:
+      enabled: ALWAYS
+
+###############
+# Micrometer #
+###############
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+
+###############
+# snow-flake #
+###############
+snow-flake:
+  datacenter-id: 1
+  worker-id: 1
+

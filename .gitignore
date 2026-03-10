@@ -1,0 +1,21 @@
+### Gradle ###
+# 모든 하위 디렉토리(ticket-server 등)의 build 폴더 무시
+**/build/
+!**/gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### IntelliJ IDEA ###
+.idea/
+**/.idea/
+*.iws
+*.iml
+*.ipr
+**/out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### Querydsl ###
+# 모든 하위 디렉토리의 Querydsl Q-classes 무시
+**/src/main/generated/
+**/build/generated/
