@@ -1,6 +1,7 @@
-package com.yoo.ticket.exception;
+package com.yoo.ticket.global.exception;
 
-import com.yoo.ticket.dto.ErrorResponse;
+import com.yoo.ticket.global.exception.dto.ErrorResponse;
+import com.yoo.ticket.global.exception.enums.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
