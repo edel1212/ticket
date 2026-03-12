@@ -1,4 +1,4 @@
-package com.yoo.ticket.exception;
+package com.yoo.ticket.global.exception.enums;
 
 import lombok.Getter;
 import org.springframework.http.HttpStatus;

@@ -1,4 +1,4 @@
-package com.yoo.ticket.dto;
+package com.yoo.ticket.global.exception.dto;
 
 import lombok.Builder;
 import lombok.Getter;
