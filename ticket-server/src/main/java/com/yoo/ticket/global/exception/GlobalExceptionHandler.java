@@ -69,6 +69,23 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 비즈니스 예외를 처리한다.
+     * BusinessException을 상속한 도메인 예외를 공통으로 처리합니다.
+     *
+     * @param e BusinessException
+     * @return ResponseEntity<ErrorResponse>
+     */
+    @ExceptionHandler(BusinessException.class)
+    protected ResponseEntity<ErrorResponse> handleBusinessException(BusinessException e) {
+        log.error("handleBusinessException", e);
+        final ErrorCode errorCode = e.getErrorCode();
+        final ErrorResponse response = ErrorResponse.of(errorCode.getCode(), errorCode.getMessage());
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .body(response);
+    }
+
+    /**
      * 그 외 모든 예외를 처리한다.
      *
      * @param e Exception

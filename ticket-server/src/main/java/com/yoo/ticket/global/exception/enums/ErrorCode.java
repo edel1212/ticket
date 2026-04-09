@@ -15,7 +15,15 @@ public enum ErrorCode {
     ENTITY_NOT_FOUND(HttpStatus.BAD_REQUEST, "C003", "Entity Not Found"),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C004", "Server Error"),
     INVALID_TYPE_VALUE(HttpStatus.BAD_REQUEST, "C005", "Invalid Type Value"),
-    HANDLE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "C006", "Access is Denied");
+    HANDLE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "C006", "Access is Denied"),
+
+    // Member
+    DUPLICATE_EMAIL(HttpStatus.CONFLICT, "M001", "Email Already Exists"),
+    MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "M002", "Member Not Found"),
+    INVALID_PASSWORD(HttpStatus.UNAUTHORIZED, "M003", "Invalid Password"),
+    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "M004", "Invalid Token"),
+    EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "M005", "Expired Token"),
+    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "M006", "Refresh Token Not Found");
 
     private final HttpStatus status;
     private final String code;
