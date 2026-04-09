@@ -35,12 +35,22 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+	// Spring Security
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+
+	// JWT (jjwt 0.12.x)
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
 	annotationProcessor 'org.projectlombok:lombok'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
+	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testRuntimeOnly 'com.h2database:h2'
     testCompileOnly 'org.projectlombok:lombok'
@@ -50,9 +60,42 @@ dependencies {
 tasks.named('test') {
 	outputs.dir snippetsDir
 	useJUnitPlatform()
+	testLogging {
+		events "passed", "failed", "skipped"
+	}
 }
 
 tasks.named('asciidoctor') {
 	inputs.dir snippetsDir
 	dependsOn test
+	// adoc 파일에서 {snippets} 변수로 생성된 스니펫 경로를 참조할 수 있게 한다.
+	attributes 'snippets': snippetsDir
+}
+
+// bootRun 실행 시 asciidoctor 결과물을 추가 리소스로 서빙한다.
+// - src/main/resources/static/docs/ 에 복사하지 않으므로 git 오염 없음
+// - Spring Boot는 classpath:/static/ 하위를 /로 서빙하므로
+//   asciidoctor.outputDir 의 부모(build/docs/)를 sourceResources에 추가하면
+//   build/docs/asciidoc/ 이 /asciidoc/ 경로로 노출된다 (원하지 않는 구조).
+//   대신 별도 Copy 태스크로 build/resources/main/static/docs/ 에 놓고
+//   bootRun classpath에 해당 디렉토리를 포함시킨다.
+tasks.register('copyDocsForRun', Copy) {
+	dependsOn asciidoctor
+	from("${asciidoctor.outputDir}")
+	into layout.buildDirectory.dir("docs-for-run/static/docs")
+}
+
+tasks.named('build') {
+	dependsOn copyDocsForRun
+}
+
+tasks.named('bootRun') {
+	classpath += files(layout.buildDirectory.dir("docs-for-run"))
+}
+
+bootJar {
+	dependsOn asciidoctor
+	from("${asciidoctor.outputDir}") {
+		into 'static/docs'
+	}
 }
