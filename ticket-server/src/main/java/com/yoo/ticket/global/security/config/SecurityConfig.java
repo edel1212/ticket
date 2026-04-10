@@ -4,10 +4,14 @@ import com.yoo.ticket.global.security.handler.JwtAccessDeniedHandler;
 import com.yoo.ticket.global.security.handler.JwtAuthenticationEntryPoint;
 import com.yoo.ticket.global.security.jwt.JwtAuthenticationFilter;
 import com.yoo.ticket.global.security.jwt.JwtTokenProvider;
+import com.yoo.ticket.global.security.service.CustomUserDetailsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -29,10 +33,32 @@ public class SecurityConfig {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    private final CustomUserDetailsService customUserDetailsService;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
+
+    /**
+     * DaoAuthenticationProvider를 통해 CustomUserDetailsService와 PasswordEncoder를 연결합니다.
+     * Spring Security의 표준 인증 흐름(AuthenticationManager)에서 사용됩니다.
+     */
+    @Bean
+    public DaoAuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(customUserDetailsService);
+        provider.setPasswordEncoder(passwordEncoder());
+        return provider;
+    }
+
+    /**
+     * AuthenticationManager 빈 등록.
+     * 컨트롤러나 서비스에서 직접 인증 처리가 필요할 때 주입하여 사용합니다.
+     */
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
     }
 
     @Bean

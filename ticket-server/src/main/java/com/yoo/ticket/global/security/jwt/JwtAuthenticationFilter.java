@@ -1,5 +1,6 @@
 package com.yoo.ticket.global.security.jwt;
 
+import com.yoo.ticket.global.exception.BusinessException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,8 +43,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                     log.debug("JWT 인증 성공, 사용자: {}", authentication.getName());
                 }
-            } catch (Exception e) {
+            } catch (BusinessException e) {
                 log.debug("JWT 인증 실패: {}", e.getMessage());
+                SecurityContextHolder.clearContext();
+            } catch (Exception e) {
+                log.warn("JWT 필터 예상치 못한 오류: {}", e.getMessage(), e);
                 SecurityContextHolder.clearContext();
             }
         }

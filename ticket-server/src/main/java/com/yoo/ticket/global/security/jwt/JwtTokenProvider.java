@@ -3,7 +3,6 @@ package com.yoo.ticket.global.security.jwt;
 import com.yoo.ticket.global.exception.BusinessException;
 import com.yoo.ticket.global.exception.enums.ErrorCode;
 import io.jsonwebtoken.*;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +14,7 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
@@ -38,35 +38,9 @@ public class JwtTokenProvider {
             @Value("${jwt.secret}") String secret,
             @Value("${jwt.access-token-expiration}") long accessTokenExpiration,
             @Value("${jwt.refresh-token-expiration}") long refreshTokenExpiration) {
-        byte[] keyBytes = Decoders.BASE64.decode(
-                java.util.Base64.getEncoder().encodeToString(secret.getBytes())
-        );
-        this.key = Keys.hmacShaKeyFor(keyBytes);
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessTokenExpiration = accessTokenExpiration;
         this.refreshTokenExpiration = refreshTokenExpiration;
-    }
-
-    /**
-     * 인증 객체로부터 Access Token을 생성합니다.
-     *
-     * @param authentication 인증 객체
-     * @return 생성된 Access Token 문자열
-     */
-    public String generateAccessToken(Authentication authentication) {
-        String authorities = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(","));
-
-        Date now = new Date();
-        Date expiry = new Date(now.getTime() + accessTokenExpiration);
-
-        return Jwts.builder()
-                .subject(authentication.getName())
-                .claim(AUTHORITIES_KEY, authorities)
-                .issuedAt(now)
-                .expiration(expiry)
-                .signWith(key)
-                .compact();
     }
 
     /**

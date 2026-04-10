@@ -11,11 +11,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 실행 (기본 포트 8080, PORT 환경변수로 변경 가능)
 ./gradlew bootRun
 
-# 전체 테스트
-./gradlew test
+# 전체 테스트 (요약 출력 — 토큰 절약)
+bash scripts/test.sh
 
 # 단일 테스트 클래스 실행
-./gradlew test --tests "com.yoo.ticket.SomeTestClassName"
+bash scripts/test.sh --tests "com.yoo.ticket.SomeTestClassName"
+
+# 전체 Gradle 출력이 필요한 경우
+./gradlew test
 
 # API 문서 생성 (REST Docs 기반)
 ./gradlew asciidoctor
@@ -51,3 +54,14 @@ Spring Boot 3.5.11 / Java 17 기반 기차 티켓 예약 REST API 서버.
 **데이터베이스:** 운영 MariaDB (ddl-auto=update), 테스트 H2. 엔티티 컬럼 설명은 `@Comment` 어노테이션 사용.
 
 **모니터링:** Actuator로 `health`, `info`, `metrics`, `prometheus` 엔드포인트 노출. 로그는 콘솔 및 `logs/app.log` (롤링).
+
+## 의존성 정책
+
+유틸리티 클래스를 직접 구현하기 전에, 대중적으로 사용되거나 검증된 라이브러리가 있으면 `build.gradle`에 추가하는 방식을 우선한다.
+
+- 직접 구현 대신 라이브러리를 먼저 검토한다.
+- 라이브러리 선택 기준: 다운로드 수 / GitHub Stars / 마지막 릴리스 날짜 / Spring Boot 호환성.
+- 라이브러리를 추가할 때는 사용 목적을 주석으로 함께 기록한다.
+
+**적용 예시:**
+- UUID v7 생성 → `com.fasterxml.uuid:java-uuid-generator` (직접 비트 조작 구현 금지)

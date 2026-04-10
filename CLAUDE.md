@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. **커밋 전 테스트 필수** — 어떤 변경이든 커밋 전에 반드시 테스트를 실행하여 전체 테스트를 통과시킨다.
 2. **TDD 방식으로 개발** — 구현 코드 작성 전에 반드시 테스트를 먼저 작성한다 (Red → Green → Refactor 사이클).
+3. **라이브러리 우선** — 유틸리티를 직접 구현하기 전에 검증된 라이브러리가 있으면 의존성으로 추가한다. 각 모듈의 `CLAUDE.md` 의존성 정책을 따른다.
 
 ## Language
 
