@@ -11,14 +11,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 실행 (기본 포트 8080, PORT 환경변수로 변경 가능)
 ./gradlew bootRun
 
-# 전체 테스트 (요약 출력 — 토큰 절약)
-bash scripts/test.sh
+# 전체 테스트
+./gradlew test
 
 # 단일 테스트 클래스 실행
-bash scripts/test.sh --tests "com.yoo.ticket.SomeTestClassName"
-
-# 전체 Gradle 출력이 필요한 경우
-./gradlew test
+./gradlew test --tests "com.yoo.ticket.SomeTestClassName"
 
 # API 문서 생성 (REST Docs 기반)
 ./gradlew asciidoctor
