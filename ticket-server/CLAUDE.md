@@ -51,3 +51,14 @@ Spring Boot 3.5.11 / Java 17 기반 기차 티켓 예약 REST API 서버.
 **데이터베이스:** 운영 MariaDB (ddl-auto=update), 테스트 H2. 엔티티 컬럼 설명은 `@Comment` 어노테이션 사용.
 
 **모니터링:** Actuator로 `health`, `info`, `metrics`, `prometheus` 엔드포인트 노출. 로그는 콘솔 및 `logs/app.log` (롤링).
+
+## 의존성 정책
+
+유틸리티 클래스를 직접 구현하기 전에, 대중적으로 사용되거나 검증된 라이브러리가 있으면 `build.gradle`에 추가하는 방식을 우선한다.
+
+- 직접 구현 대신 라이브러리를 먼저 검토한다.
+- 라이브러리 선택 기준: 다운로드 수 / GitHub Stars / 마지막 릴리스 날짜 / Spring Boot 호환성.
+- 라이브러리를 추가할 때는 사용 목적을 주석으로 함께 기록한다.
+
+**적용 예시:**
+- UUID v7 생성 → `com.fasterxml.uuid:java-uuid-generator` (직접 비트 조작 구현 금지)

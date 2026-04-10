@@ -18,7 +18,7 @@ import java.util.UUID;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder
-@AllArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class Member extends BaseTimeEntity {
 
     @Id
@@ -45,7 +45,7 @@ public class Member extends BaseTimeEntity {
     @Builder.Default
     private MemberRole role = MemberRole.USER;
 
-    @Column(length = 512)
+    @Column(length = 1000)
     @Comment("Refresh Token (로그인 시 발급, 로그아웃 시 삭제)")
     private String refreshToken;
 

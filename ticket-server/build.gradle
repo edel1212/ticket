@@ -39,6 +39,9 @@ dependencies {
 	// Spring Security
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 
+	// UUID v7 생성
+	implementation 'com.fasterxml.uuid:java-uuid-generator:5.1.0'
+
 	// JWT (jjwt 0.12.x)
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

@@ -30,6 +30,6 @@ snow-flake:
 ###############
 jwt:
   secret: "your-very-long-secret-key-that-is-at-least-256-bits-long-for-hs256-algorithm"
-  access-token-expiration: 3600000    # 1시간 (ms)
+  access-token-expiration: 900000     # 15분 (ms)
   refresh-token-expiration: 604800000 # 7일 (ms)
 
