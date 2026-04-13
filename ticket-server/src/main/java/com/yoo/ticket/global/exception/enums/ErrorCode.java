@@ -23,7 +23,11 @@ public enum ErrorCode {
     INVALID_PASSWORD(HttpStatus.UNAUTHORIZED, "M003", "Invalid Password"),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "M004", "Invalid Token"),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "M005", "Expired Token"),
-    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "M006", "Refresh Token Not Found");
+    REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "M006", "Refresh Token Not Found"),
+
+    // Queue
+    TRAIN_NOT_FOUND(HttpStatus.NOT_FOUND, "Q001", "열차를 찾을 수 없습니다."),
+    ALREADY_IN_QUEUE(HttpStatus.CONFLICT, "Q002", "이미 대기열에 등록되어 있습니다.");
 
     private final HttpStatus status;
     private final String code;

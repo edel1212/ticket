@@ -27,5 +27,12 @@ spring:
       auto-commit: true          # 자동 커밋 여부 (기본값)
       connection-timeout: 30000  # 커넥션 확보를 위해 대기할 최대 시간 (ms)
 
+  # Redis 설정 (Redisson 클라이언트)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+
 
 
