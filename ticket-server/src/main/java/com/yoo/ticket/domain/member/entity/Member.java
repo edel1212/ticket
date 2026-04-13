@@ -6,6 +6,8 @@ import com.yoo.ticket.global.common.generator.UuidV7;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.UUID;
 
@@ -23,6 +25,7 @@ public class Member extends BaseTimeEntity {
 
     @Id
     @UuidV7
+    @JdbcTypeCode(SqlTypes.BINARY)
     @Column(columnDefinition = "BINARY(16)")
     @Comment("회원 ID (UUID v7)")
     private UUID id;
