@@ -2,6 +2,9 @@ package com.yoo.ticket.domain.queue.service.impl;
 
 import com.yoo.ticket.domain.queue.dto.response.QueueJoinResponse;
 import com.yoo.ticket.domain.queue.service.QueueService;
+import com.yoo.ticket.domain.train.repository.TrainRepository;
+import com.yoo.ticket.global.exception.BusinessException;
+import com.yoo.ticket.global.exception.enums.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBucket;
@@ -23,35 +26,39 @@ public class QueueServiceImpl implements QueueService {
 
     private static final String WAITING_QUEUE_KEY = "train:%d:waiting_queue";
     private static final String TOKEN_KEY = "queue:token:%s:%d";
-    private static final long TOKEN_TTL_HOURS = 1L;
+    private static final Duration QUEUE_TTL = Duration.ofHours(1);
     private static final String STATUS_WAITING = "WAITING";
 
     private final RedissonClient redissonClient;
+    private final TrainRepository trainRepository;
 
     @Override
     public QueueJoinResponse joinQueue(Long trainId, String memberEmail) {
+        // 열차 존재 여부 확인
+        if (!trainRepository.existsById(trainId)) {
+            throw new BusinessException(ErrorCode.TRAIN_NOT_FOUND);
+        }
+
         String queueKey = String.format(WAITING_QUEUE_KEY, trainId);
         String tokenKey = String.format(TOKEN_KEY, memberEmail, trainId);
 
         RScoredSortedSet<String> waitingQueue = redissonClient.getScoredSortedSet(queueKey);
         RBucket<String> tokenBucket = redissonClient.getBucket(tokenKey);
 
-        // 중복 등록 여부 확인 (ZSCORE)
+        // 중복 등록 여부 확인 (ZSCORE) → 이미 등록된 경우 409 예외
         Double existingScore = waitingQueue.getScore(memberEmail);
-
-        String queueToken;
         if (existingScore != null) {
-            // 이미 등록된 경우: 기존 토큰 반환
-            queueToken = tokenBucket.get();
-            log.info("대기열 중복 진입 - trainId: {}, memberEmail: {}", trainId, memberEmail);
-        } else {
-            // 신규 등록: UUID 토큰 생성 → ZADD → 토큰 저장
-            queueToken = UUID.randomUUID().toString();
-            double score = System.currentTimeMillis();
-            waitingQueue.add(score, memberEmail);
-            tokenBucket.set(queueToken, Duration.ofHours(TOKEN_TTL_HOURS));
-            log.info("대기열 신규 진입 - trainId: {}, memberEmail: {}", trainId, memberEmail);
+            log.info("대기열 중복 진입 시도 - trainId: {}, memberEmail: {}", trainId, memberEmail);
+            throw new BusinessException(ErrorCode.ALREADY_IN_QUEUE);
         }
+
+        // 신규 등록: UUID 토큰 생성 → ZADD → ZSET TTL 설정 → 토큰 저장
+        String queueToken = UUID.randomUUID().toString();
+        double score = System.currentTimeMillis();
+        waitingQueue.add(score, memberEmail);
+        waitingQueue.expire(QUEUE_TTL);
+        tokenBucket.set(queueToken, QUEUE_TTL);
+        log.info("대기열 신규 진입 - trainId: {}, memberEmail: {}", trainId, memberEmail);
 
         // ZRANK로 현재 순번 조회 (0-based → 1-based로 변환)
         Integer zeroBasedRank = waitingQueue.rank(memberEmail);

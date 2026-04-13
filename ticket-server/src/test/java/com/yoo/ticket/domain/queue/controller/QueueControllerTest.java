@@ -2,6 +2,8 @@ package com.yoo.ticket.domain.queue.controller;
 
 import com.yoo.ticket.domain.queue.dto.response.QueueJoinResponse;
 import com.yoo.ticket.domain.queue.service.QueueService;
+import com.yoo.ticket.global.exception.BusinessException;
+import com.yoo.ticket.global.exception.enums.ErrorCode;
 import com.yoo.ticket.global.security.config.TestSecurityConfig;
 import com.yoo.ticket.global.security.jwt.JwtTokenProvider;
 import com.yoo.ticket.global.security.service.CustomUserDetailsService;
@@ -98,25 +100,17 @@ class QueueControllerTest {
 
     @Test
     @WithMockUser(username = "test@example.com", roles = "USER")
-    @DisplayName("대기열 진입 API - 이미 등록된 경우 기존 토큰과 함께 200 OK를 반환한다")
-    void joinQueue_alreadyRegistered_returnsExistingToken() throws Exception {
-        // given: 이미 등록된 사용자 → 기존 토큰 재반환
-        QueueJoinResponse response = QueueJoinResponse.builder()
-                .queueToken("existing-token-uuid-12345")
-                .trainId(1L)
-                .status("WAITING")
-                .rank(3L)
-                .message("이미 대기열에 등록되어 있습니다. 현재 대기 순번은 3번입니다.")
-                .build();
-
-        given(queueService.joinQueue(anyLong(), anyString())).willReturn(response);
+    @DisplayName("대기열 진입 API - 이미 등록된 경우 409 Conflict를 반환한다")
+    void joinQueue_alreadyRegistered_returns409() throws Exception {
+        // given: 이미 등록된 사용자 → ALREADY_IN_QUEUE 예외
+        given(queueService.joinQueue(anyLong(), anyString()))
+                .willThrow(new BusinessException(ErrorCode.ALREADY_IN_QUEUE));
 
         // when & then
         mockMvc.perform(post("/api/v1/trains/{trainId}/queue", 1L))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.queueToken").value("existing-token-uuid-12345"))
-                .andExpect(jsonPath("$.status").value("WAITING"))
-                .andExpect(jsonPath("$.rank").value(3L))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("Q002"))
+                .andExpect(jsonPath("$.message").value("이미 대기열에 등록되어 있습니다."))
                 .andDo(print())
                 .andDo(document("queue/join-already-registered",
                         preprocessRequest(prettyPrint()),
@@ -125,11 +119,39 @@ class QueueControllerTest {
                                 parameterWithName("trainId").description("열차 ID")
                         ),
                         responseFields(
-                                fieldWithPath("queueToken").description("기존 대기열 토큰 (이미 등록된 경우 재반환)"),
-                                fieldWithPath("trainId").description("열차 ID"),
-                                fieldWithPath("status").description("대기 상태 (WAITING)"),
-                                fieldWithPath("rank").description("현재 대기 순번"),
-                                fieldWithPath("message").description("대기열 안내 메시지")
+                                fieldWithPath("timestamp").description("에러 발생 시각"),
+                                fieldWithPath("code").description("에러 코드 (Q002)"),
+                                fieldWithPath("message").description("에러 메시지"),
+                                fieldWithPath("errors").description("필드 에러 목록 (없을 경우 null)").optional()
+                        )
+                ));
+    }
+
+    @Test
+    @WithMockUser(username = "test@example.com", roles = "USER")
+    @DisplayName("대기열 진입 API - 존재하지 않는 열차 ID 요청 시 404 Not Found를 반환한다")
+    void joinQueue_trainNotFound_returns404() throws Exception {
+        // given
+        given(queueService.joinQueue(anyLong(), anyString()))
+                .willThrow(new BusinessException(ErrorCode.TRAIN_NOT_FOUND));
+
+        // when & then
+        mockMvc.perform(post("/api/v1/trains/{trainId}/queue", 999L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("Q001"))
+                .andExpect(jsonPath("$.message").value("열차를 찾을 수 없습니다."))
+                .andDo(print())
+                .andDo(document("queue/join-train-not-found",
+                        preprocessRequest(prettyPrint()),
+                        preprocessResponse(prettyPrint()),
+                        pathParameters(
+                                parameterWithName("trainId").description("열차 ID")
+                        ),
+                        responseFields(
+                                fieldWithPath("timestamp").description("에러 발생 시각"),
+                                fieldWithPath("code").description("에러 코드 (Q001)"),
+                                fieldWithPath("message").description("에러 메시지"),
+                                fieldWithPath("errors").description("필드 에러 목록 (없을 경우 null)").optional()
                         )
                 ));
     }
