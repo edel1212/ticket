@@ -8,49 +8,70 @@
 | 도메인 | 티켓팅 / 예약 시스템 |
 | 규모 | 열차 1대 (100석), 극한 동시 트래픽 |
 | 핵심 제약 | MariaDB, Redis, Kafka (모두 Docker 운영), 가상 대기열, 초과 예약 없음, DB Connection Pool 고갈 없음 |
-| 핵심 기술 | Spring Boot, Redis (ZSET), Apache Kafka, MariaDB, Docker, Spring REST Docs, SSE |
+| 핵심 기술 | Spring Boot, Redis (ZSET), Apache Kafka, MariaDB, Docker, Spring REST Docs, SSE, Outbox 패턴 |
 
 ---
 
 ## 1. 아키텍처 흐름
 
+### 1.0 아키텍처 개요
+
+| 컴포넌트 | 역할 |
+|---|---|
+| Redis Queue | 대기열 순번 관리 |
+| Redis Lock | 좌석 선점 (TTL 5분) |
+| 예매 서비스 | 비즈니스 로직 처리 |
+| Kafka | 결제 완료 이벤트 발행 (비동기) |
+| MariaDB | 회원 잔액, 예약, 티켓 생성 및 저장 |
+| SSE | 순번 조회 + 티켓 확정 알림 |
+
 ### 1.1 전체 시퀀스 다이어그램
 
 ```mermaid
 sequenceDiagram
-    participant U as 사용자 (Client)
-    participant A as Application Server
-    participant R as Redis
-    participant K as Kafka
-    participant C as Kafka Consumer
-    participant D as MariaDB
+    actor User as 사용자
+    participant Queue as Redis Queue
+    participant Svc as 예매 서비스
+    participant Lock as Redis Lock
+    participant DB as MariaDB
+    participant Kafka as Kafka
+    participant SSE as SSE Emitter
 
-    U->>A: 1. POST /api/v1/queue/join
-    A->>R: 2. ZADD train:1:waiting_queue (userId, currentTimeMillis)
-    A-->>U: 3. 대기열 토큰 반환 (UUID)
+    User->>Queue: 대기열 진입 요청
+    Queue-->>User: 순번 배정
 
-    loop 실시간 순번 조회 (SSE)
-        U->>A: 4. GET /api/v1/queue/status (SSE 연결)
-        A->>R: 5. ZRANK train:1:waiting_queue userId
-        R-->>A: 6. 현재 순위 반환
-        A-->>U: 7. "내 앞에 N명 있습니다" (SSE push)
+    Queue->>Svc: 내 순번 도달 (입장 허가)
+    User->>Svc: 좌석 선택
+
+    Svc->>Lock: 좌석 선점 요청 (TTL 5분)
+    alt 이미 선점된 좌석
+        Lock-->>Svc: 선점 실패
+        Svc-->>User: 좌석 선택 재요청
+    else 선점 성공
+        Lock-->>Svc: Lock 획득
+        Svc-->>User: 결제 페이지 (카운트다운 시작)
     end
 
-    Note over A,R: Scheduler → 대기열 상위 N명 Active 유저로 전환 (ZPOPMIN)
+    User->>Svc: 결제 요청
+    Svc->>DB: 잔액 조회
 
-    U->>A: 8. POST /api/v1/reservations (Active 토큰 필수)
-    A->>R: 9. Redisson tryLock (lock:seat:{trainId}:{seatNumber})
-    A->>K: 10. reservation.request 토픽 발행
-    A-->>U: 11. 202 Accepted (reservationId 반환)
+    alt 잔액 부족
+        DB-->>Svc: 잔액 부족
+        Svc->>Lock: Redis 락 즉시 해제
+        Svc-->>User: 결제 실패 응답
+    else 잔액 충분
+        DB-->>Svc: 조회 성공
+        Svc->>DB: 잔액 차감 (트랜잭션)
+        DB-->>Svc: 차감 완료
+        Svc->>Lock: Redis 락 해제
+        Svc->>Kafka: order-finalized 이벤트 발행
+        Svc-->>User: 결제 완료 응답 (처리 중)
+    end
 
-    K->>C: 12. 메시지 소비 (Consumer Group)
-    C->>D: 13. Reservation INSERT (status: PENDING)
-
-    U->>A: 14. POST /api/v1/reservations/{id}/payments
-    A->>D: 15. Reservation 상태 COMPLETED 업데이트
-    A->>D: 16. Seat 상태 RESERVED 업데이트
-    A->>R: 17. 좌석 캐시 업데이트 (train:{trainId}:seats)
-    A-->>U: 18. 200 OK (결제 완료)
+    Kafka-->>Svc: 이벤트 수신 (비동기, Consumer)
+    Svc->>DB: 티켓 생성 및 저장
+    Svc->>SSE: 완료 이벤트 전송
+    SSE-->>User: 티켓 확정 알림
 ```
 
 ### 1.2 흐름 요약
@@ -58,11 +79,12 @@ sequenceDiagram
 | 단계 | 설명 |
 |---|---|
 | 대기열 진입 | Redis ZSET에 사용자 등록, UUID 토큰 발급 |
-| 순번 조회 | SSE로 실시간 ZRANK 결과 push |
+| 순번 대기 | SSE로 실시간 ZRANK 결과 push |
 | Active 전환 | 스케줄러가 상위 N명을 ZPOPMIN으로 꺼내 Active Pool에 등록 |
-| 좌석 선점 | Redisson 분산 락 획득 → Kafka 발행 → 202 Accepted |
-| DB INSERT | Consumer가 Kafka 메시지 소비 → PENDING 상태로 INSERT |
-| 결제 확정 | COMPLETED 상태 전환, Redis 캐시 업데이트 |
+| 좌석 선점 | Redis Lock 획득 (TTL 5분) → 결제 페이지 이동 |
+| 결제 (잔액 차감) | 잔액 조회 → 차감(트랜잭션) → Lock 해제 → Kafka 이벤트 발행 → 202 Accepted |
+| 티켓 생성 | Kafka Consumer가 이벤트 소비 → MariaDB에 티켓 INSERT |
+| SSE 알림 | 티켓 확정 알림을 SSE로 사용자에게 push |
 
 ---
 
@@ -164,11 +186,30 @@ CREATE TABLE reservation (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
+```sql
+-- 회원 테이블 (잔액 컬럼 포함)
+ALTER TABLE member ADD COLUMN balance DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '잔액';
+
+-- 티켓 테이블 (Kafka Consumer가 생성)
+CREATE TABLE ticket (
+    id             BINARY(16)   NOT NULL PRIMARY KEY               COMMENT 'UUID v7',
+    reservation_id BIGINT       NOT NULL                           COMMENT '예약 ID (FK)',
+    member_id      BINARY(16)   NOT NULL                           COMMENT '회원 ID (FK)',
+    train_id       BIGINT       NOT NULL                           COMMENT '열차 ID',
+    seat_number    VARCHAR(10)  NOT NULL                           COMMENT '좌석 번호',
+    issued_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP          COMMENT '티켓 발급 시각',
+    FOREIGN KEY (reservation_id) REFERENCES reservation(id),
+    FOREIGN KEY (member_id)      REFERENCES member(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
 **테이블 관계**
 
 - `train` 1 : N `seat` — 열차 1대에 좌석 N개
 - `train` 1 : N `reservation` — 열차 1대에 예약 N건
+- `reservation` 1 : 1 `ticket` — 결제 완료된 예약에 티켓 발급
 - `reservation`은 `train_id + seat_number`로 좌석을 참조 (seat_id FK 미사용)
+- `member.balance` — 결제 시 동기적으로 차감, MariaDB 단일 인스턴스에서 관리
 
 ---
 
@@ -248,6 +289,47 @@ Redis Lock TTL 만료 → lock 자동 삭제
 Reservation.status = CANCELLED
 Seat.status = AVAILABLE
 Redis seats cache 갱신
+```
+
+---
+
+### 4.5 잔액 차감 타이밍
+
+**목적:** 결제 결과를 사용자에게 즉시 응답하고, 실패 시 보상 트랜잭션 복잡도를 최소화
+
+**동작 방식:**
+- 잔액 차감은 Kafka 이벤트 발행 **이전에 동기적으로** 처리
+- 차감 성공 → Kafka 발행 → `202 Accepted` 반환
+- 차감 실패(잔액 부족) → Redis Lock 즉시 해제 → `400 Bad Request` 반환
+
+---
+
+### 4.6 Redis Lock 수동 해제
+
+**목적:** 결제 실패 시 다른 사용자가 즉시 좌석을 선점할 수 있도록 처리
+
+**동작 방식:**
+- 결제 실패(잔액 부족 등) → Lock을 TTL 만료 전에 즉시 수동 해제
+- 결제 성공 시에도 Kafka 발행 직후 Lock 해제 (더 이상 선점 필요 없음)
+- TTL(5분) 자동 해제는 최후 안전망 (결제 페이지 이탈, 타임아웃 등)
+
+---
+
+### 4.7 Outbox 패턴 (권장)
+
+**목적:** 잔액 차감(MariaDB)과 Kafka 발행 사이의 원자성 미보장 문제 해결
+
+**문제:** 잔액 차감 후 Kafka 발행 전 서버 장애 발생 시 → 잔액은 차감됐으나 티켓 미발급
+
+**해결 방식:**
+```
+MariaDB 트랜잭션 내에서:
+  1. 잔액 차감
+  2. outbox 테이블에 이벤트 레코드 삽입
+  → 두 작업을 단일 트랜잭션으로 묶어 원자성 보장
+
+별도 Relay 프로세스:
+  outbox 테이블 polling → Kafka 발행 → 레코드 삭제
 ```
 
 ---
