@@ -45,20 +45,27 @@ public class QueueServiceImpl implements QueueService {
         RScoredSortedSet<String> waitingQueue = redissonClient.getScoredSortedSet(queueKey);
         RBucket<String> tokenBucket = redissonClient.getBucket(tokenKey);
 
-        // 중복 등록 여부 확인 (ZSCORE) → 이미 등록된 경우 409 예외
-        Double existingScore = waitingQueue.getScore(memberEmail);
-        if (existingScore != null) {
-            log.info("대기열 중복 진입 시도 - trainId: {}, memberEmail: {}", trainId, memberEmail);
-            throw new BusinessException(ErrorCode.ALREADY_IN_QUEUE);
-        }
-
-        // 신규 등록: UUID 토큰 생성 → ZADD → ZSET TTL 설정 → 토큰 저장
-        String queueToken = UUID.randomUUID().toString();
+        // ZADD NX (원자적): 이미 존재하면 false, 신규 등록이면 true
         double score = System.currentTimeMillis();
-        waitingQueue.add(score, memberEmail);
-        waitingQueue.expire(QUEUE_TTL);
-        tokenBucket.set(queueToken, QUEUE_TTL);
-        log.info("대기열 신규 진입 - trainId: {}, memberEmail: {}", trainId, memberEmail);
+        boolean isNewEntry = waitingQueue.tryAdd(score, memberEmail);
+
+        String queueToken;
+        if (isNewEntry) {
+            // 신규 등록: UUID 토큰 생성 → ZSET TTL 설정 → 토큰 저장
+            queueToken = UUID.randomUUID().toString();
+            waitingQueue.expire(QUEUE_TTL);
+            tokenBucket.set(queueToken, QUEUE_TTL);
+            log.info("대기열 신규 진입 - trainId: {}, memberEmail: {}", trainId, memberEmail);
+        } else {
+            // 재진입: 기존 토큰 반환 (멱등성 보장, 순번 변경 없음)
+            queueToken = tokenBucket.get();
+            if (queueToken == null) {
+                // 토큰만 소실된 엣지 케이스 방어: 재발급
+                queueToken = UUID.randomUUID().toString();
+                tokenBucket.set(queueToken, QUEUE_TTL);
+            }
+            log.info("대기열 재진입 (멱등성) - trainId: {}, memberEmail: {}", trainId, memberEmail);
+        }
 
         // ZRANK로 현재 순번 조회 (0-based → 1-based로 변환)
         Integer zeroBasedRank = waitingQueue.rank(memberEmail);
