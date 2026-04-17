@@ -3,7 +3,10 @@
     "allow": [
       "Bash(./gradlew tasks:*)",
       "Bash(./gradlew test:*)",
-      "Bash(./gradlew cleanTest test)"
+      "Bash(./gradlew cleanTest test)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
