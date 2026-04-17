@@ -20,7 +20,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders.post;
 import static org.springframework.restdocs.operation.preprocess.Preprocessors.*;
@@ -96,35 +99,9 @@ class QueueControllerTest {
                                 fieldWithPath("message").description("대기열 등록 안내 메시지")
                         )
                 ));
-    }
 
-    @Test
-    @WithMockUser(username = "test@example.com", roles = "USER")
-    @DisplayName("대기열 진입 API - 이미 등록된 경우 409 Conflict를 반환한다")
-    void joinQueue_alreadyRegistered_returns409() throws Exception {
-        // given: 이미 등록된 사용자 → ALREADY_IN_QUEUE 예외
-        given(queueService.joinQueue(anyLong(), anyString()))
-                .willThrow(new BusinessException(ErrorCode.ALREADY_IN_QUEUE));
-
-        // when & then
-        mockMvc.perform(post("/api/v1/trains/{trainId}/queue", 1L))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("Q002"))
-                .andExpect(jsonPath("$.message").value("이미 대기열에 등록되어 있습니다."))
-                .andDo(print())
-                .andDo(document("queue/join-already-registered",
-                        preprocessRequest(prettyPrint()),
-                        preprocessResponse(prettyPrint()),
-                        pathParameters(
-                                parameterWithName("trainId").description("열차 ID")
-                        ),
-                        responseFields(
-                                fieldWithPath("timestamp").description("에러 발생 시각"),
-                                fieldWithPath("code").description("에러 코드 (Q002)"),
-                                fieldWithPath("message").description("에러 메시지"),
-                                fieldWithPath("errors").description("필드 에러 목록 (없을 경우 null)").optional()
-                        )
-                ));
+        // 컨트롤러가 @WithMockUser의 username(이메일)을 서비스에 올바르게 전달하는지 검증
+        verify(queueService).joinQueue(eq(1L), eq("test@example.com"));
     }
 
     @Test
@@ -157,11 +134,28 @@ class QueueControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "test@example.com", roles = "USER")
+    @DisplayName("대기열 진입 API - trainId가 숫자가 아닌 경우 400 Bad Request를 반환한다")
+    void joinQueue_invalidTrainIdType_returns400() throws Exception {
+        // when & then: Long 타입 파싱 실패 → MethodArgumentTypeMismatchException → 400
+        mockMvc.perform(post("/api/v1/trains/{trainId}/queue", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C005"))
+                .andDo(print());
+
+        // 타입 오류 시 서비스 호출 없음 검증
+        verify(queueService, never()).joinQueue(anyLong(), anyString());
+    }
+
+    @Test
     @DisplayName("대기열 진입 API - 인증되지 않은 사용자가 요청하면 401 Unauthorized를 반환한다")
     void joinQueue_unauthenticated_returns401() throws Exception {
         // when & then
         mockMvc.perform(post("/api/v1/trains/{trainId}/queue", 1L))
                 .andExpect(status().isUnauthorized())
                 .andDo(print());
+
+        // 인증 실패 시 서비스가 호출되지 않아야 함 (Security 필터에서 차단)
+        verify(queueService, never()).joinQueue(anyLong(), anyString());
     }
 }

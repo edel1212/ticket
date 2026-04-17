@@ -45,23 +45,38 @@ public class QueueServiceImpl implements QueueService {
         RScoredSortedSet<String> waitingQueue = redissonClient.getScoredSortedSet(queueKey);
         RBucket<String> tokenBucket = redissonClient.getBucket(tokenKey);
 
-        // 중복 등록 여부 확인 (ZSCORE) → 이미 등록된 경우 409 예외
-        Double existingScore = waitingQueue.getScore(memberEmail);
-        if (existingScore != null) {
-            log.info("대기열 중복 진입 시도 - trainId: {}, memberEmail: {}", trainId, memberEmail);
-            throw new BusinessException(ErrorCode.ALREADY_IN_QUEUE);
-        }
-
-        // 신규 등록: UUID 토큰 생성 → ZADD → ZSET TTL 설정 → 토큰 저장
-        String queueToken = UUID.randomUUID().toString();
+        // ZADD NX (원자적): 이미 존재하면 false, 신규 등록이면 true
         double score = System.currentTimeMillis();
-        waitingQueue.add(score, memberEmail);
-        waitingQueue.expire(QUEUE_TTL);
-        tokenBucket.set(queueToken, QUEUE_TTL);
-        log.info("대기열 신규 진입 - trainId: {}, memberEmail: {}", trainId, memberEmail);
+        boolean isNewEntry = waitingQueue.tryAdd(score, memberEmail);
+
+        String queueToken;
+        if (isNewEntry) {
+            // 신규 등록: UUID 토큰 생성 → ZSET TTL 설정 → 토큰 저장
+            queueToken = UUID.randomUUID().toString();
+            waitingQueue.expire(QUEUE_TTL);
+            tokenBucket.set(queueToken, QUEUE_TTL);
+            log.info("대기열 신규 진입 - trainId: {}, memberEmail: {}", trainId, memberEmail);
+        } else {
+            // 재진입: 기존 토큰 반환 (멱등성 보장, 순번 변경 없음)
+            queueToken = tokenBucket.get();
+            if (queueToken == null) {
+                // 토큰만 소실된 엣지 케이스: ZSET 잔여 TTL에 맞춰 재발급 (TTL 불일치 방지)
+                queueToken = UUID.randomUUID().toString();
+                long remainMs = waitingQueue.remainTimeToLive();
+                Duration tokenTtl = (remainMs > 0) ? Duration.ofMillis(remainMs) : QUEUE_TTL;
+                tokenBucket.set(queueToken, tokenTtl);
+                log.warn("대기열 토큰 소실 감지 - 재발급 처리. trainId: {}, memberEmail: {}, 잔여TTL: {}ms",
+                        trainId, memberEmail, remainMs);
+            }
+            log.info("대기열 재진입 (멱등성) - trainId: {}, memberEmail: {}", trainId, memberEmail);
+        }
 
         // ZRANK로 현재 순번 조회 (0-based → 1-based로 변환)
         Integer zeroBasedRank = waitingQueue.rank(memberEmail);
+        if (zeroBasedRank == null) {
+            log.warn("ZRANK 조회 결과 null - ZADD 직후 키 소멸 가능성. trainId: {}, memberEmail: {}",
+                    trainId, memberEmail);
+        }
         long rank = (zeroBasedRank != null ? zeroBasedRank : 0) + 1;
 
         String message = "대기열에 등록되었습니다. 현재 대기 순번은 " + rank + "번입니다.";
