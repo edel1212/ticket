@@ -117,13 +117,16 @@ class QueueServiceTest {
     }
 
     @Test
-    @DisplayName("joinQueue - 재진입 시 토큰 소실 엣지 케이스: 기존 토큰이 없으면 새 토큰을 재발급한다")
+    @DisplayName("joinQueue - 재진입 시 토큰 소실 엣지 케이스: ZSET 잔여 TTL에 동기화하여 새 토큰을 재발급한다")
     @SuppressWarnings("unchecked")
     void joinQueue_재진입시_토큰소실_재발급() {
-        // given: tryAdd false (이미 존재)이지만 토큰 버킷이 만료되어 null 반환
+        // given: ZSET에 29분(1,740,000ms)이 남은 상태에서 토큰만 만료된 케이스
+        long remainMs = Duration.ofMinutes(29).toMillis();
+
         given(trainRepository.existsById(TRAIN_ID)).willReturn(true);
         given(scoredSortedSet.tryAdd(anyDouble(), eq(MEMBER_EMAIL))).willReturn(false);
         given(bucket.get()).willReturn(null);  // 토큰 소실 케이스
+        given(scoredSortedSet.remainTimeToLive()).willReturn(remainMs);
         given(scoredSortedSet.rank(MEMBER_EMAIL)).willReturn(5);  // 0-based 5 → 1-based 6
 
         // when
@@ -134,9 +137,30 @@ class QueueServiceTest {
         assertThat(response.getQueueToken()).isNotNull();
         assertThat(response.getRank()).isEqualTo(6L);
 
-        // 토큰 소실 시 재발급(set) 호출 검증
-        verify(bucket).set(anyString(), any(Duration.class));
+        // 핵심 검증: ZSET 잔여 TTL(29분)로 재발급 — 1시간 고정이 아님
+        verify(bucket).set(anyString(), eq(Duration.ofMillis(remainMs)));
+        verify(scoredSortedSet).remainTimeToLive();
         // 토큰 소실 재발급이라도 ZSET TTL은 갱신하지 않음 (순번 유지)
+        verify(scoredSortedSet, never()).expire(any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("joinQueue - 재진입 시 토큰 소실 + ZSET TTL 없음: QUEUE_TTL(1시간) 폴백으로 재발급한다")
+    @SuppressWarnings("unchecked")
+    void joinQueue_재진입시_토큰소실_ZSET_TTL없음_폴백() {
+        // given: ZSET의 remainTimeToLive()가 -1(TTL 없음, 비정상 상태)을 반환
+        given(trainRepository.existsById(TRAIN_ID)).willReturn(true);
+        given(scoredSortedSet.tryAdd(anyDouble(), eq(MEMBER_EMAIL))).willReturn(false);
+        given(bucket.get()).willReturn(null);
+        given(scoredSortedSet.remainTimeToLive()).willReturn(-1L);
+        given(scoredSortedSet.rank(MEMBER_EMAIL)).willReturn(5);
+
+        // when
+        QueueJoinResponse response = queueService.joinQueue(TRAIN_ID, MEMBER_EMAIL);
+
+        // then: remainMs <= 0 이므로 QUEUE_TTL(1시간) 폴백
+        assertThat(response.getQueueToken()).isNotNull();
+        verify(bucket).set(anyString(), eq(Duration.ofHours(1)));
         verify(scoredSortedSet, never()).expire(any(Duration.class));
     }
 

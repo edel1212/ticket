@@ -16,7 +16,10 @@ public interface QueueService {
      *   <li>열차 존재 여부 확인 — 없으면 {@code TRAIN_NOT_FOUND(404)} 예외</li>
      *   <li>Redis ZADD NX({@code train:{trainId}:waiting_queue})로 원자적 등록 시도</li>
      *   <li>신규 등록: UUID 토큰 생성 → ZADD NX(score=현재시각ms) → ZSET/토큰 모두 1시간 TTL 설정</li>
-     *   <li>재진입 (이미 등록됨): 기존 토큰 조회 → 예외 없이 기존 순번 반환 (멱등성 보장)</li>
+     *   <li>재진입 (이미 등록됨): 기존 토큰 조회 → 예외 없이 기존 순번 반환 (멱등성 보장).
+     *       ZSET·토큰 TTL은 갱신하지 않으므로 최초 진입 시각 기준 순번이 유지됩니다.
+     *       토큰만 소실된 엣지 케이스에서는 신규 토큰을 재발급하되,
+     *       TTL을 ZSET 잔여 시간에 동기화하여 만료 불일치를 방지합니다.</li>
      *   <li>ZRANK로 현재 대기 순번 조회 후 응답에 포함</li>
      * </ul>
      *
@@ -26,7 +29,7 @@ public interface QueueService {
      * <p>Redis Key 설계:
      * <ul>
      *   <li>대기열 ZSET: {@code train:{trainId}:waiting_queue} (TTL 1시간)</li>
-     *   <li>토큰 String: {@code queue:token:{memberEmail}:{trainId}} (TTL 1시간)</li>
+     *   <li>토큰 String: {@code queue:token:{memberEmail}:{trainId}} (신규: TTL 1시간, 토큰 소실 재발급: ZSET 잔여 TTL 동기화)</li>
      * </ul>
      *
      * @param trainId     대기열에 진입할 열차 ID
